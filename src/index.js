@@ -13,9 +13,9 @@ var closingDelayMs = 1000;
 session.clean();
 
 var telemetry = {
-  version: version,
-  name: 'auth0-cordova',
-  lib_version: auth0.version
+    version: version,
+    name: 'auth0-cordova',
+    lib_version: auth0.version
 };
 
 /**
@@ -27,18 +27,18 @@ var telemetry = {
  * @see {@link https://auth0.com/docs/api/authentication}
  */
 function CordovaAuth(options) {
-  this.clientId = options.clientId;
-  this.domain = options.domain;
-  this.redirectUri = options.packageIdentifier + '://' + options.domain + '/cordova/' + options.packageIdentifier + '/callback';
-  this.auth0 = new auth0.WebAuth({
-    clientID: this.clientId,
-    domain: this.domain
-  });
-  this.client = new auth0.Authentication(this.auth0, {
-    clientID: this.clientId,
-    domain: this.domain,
-    _telemetryInfo: telemetry
-  });
+    this.clientId = options.clientId;
+    this.domain = options.domain;
+    this.redirectUri = options.packageIdentifier + '://' + options.domain + '/cordova/' + options.packageIdentifier + '/callback';
+    this.auth0 = new auth0.WebAuth({
+        clientID: this.clientId,
+        domain: this.domain
+    });
+    this.client = new auth0.Authentication(this.auth0, {
+        clientID: this.clientId,
+        domain: this.domain,
+        _telemetryInfo: telemetry
+    });
 }
 
 /**
@@ -64,109 +64,110 @@ function CordovaAuth(options) {
  * @see {@link https://auth0.com/docs/api/authentication#authorize-client}
  * @see {@link https://auth0.com/docs/api/authentication#social}
  */
-CordovaAuth.prototype.authorize = function (parameters, callback) {
-  if (!callback || typeof callback !== 'function') {
-    throw new Error('callback not specified or is not a function');
-  }
-
-  var self = this;
-
-  getAgent(function (err, agent) {
-    if (err) {
-      return callback(err);
+CordovaAuth.prototype.authorize = function(parameters, callback) {
+    if (!callback || typeof callback !== 'function') {
+        throw new Error('callback not specified or is not a function');
     }
 
-    var keys = generateProofKey();
-    var client = self.client;
-    var redirectUri = self.redirectUri;
-    var requestState = parameters.state || generateState();
+    var self = this;
 
-    parameters.state = requestState;
-
-    var params = Object.assign({}, parameters, {
-      code_challenge_method: 'S256',
-      responseType: 'code',
-      redirectUri: redirectUri,
-      code_challenge: keys.codeChallenge
-    });
-
-    var url = client.buildAuthorizeUrl(params);
-
-    agent.open(url, function (error, result) {
-      if (error != null) {
-        session.clean();
-        return callback(error);
-      }
-
-      if (result.event === 'closed') {
-        var handleClose = function () {
-          if (session.isClosing) {
-            session.clean();
-            return callback(new Error('user canceled'));
-          }
-        };
-
-        session.closing();
-        if (getOS() === 'ios') {
-          handleClose();
-        } else {
-          setTimeout(handleClose, closingDelayMs);
-          return;
-        }
-      }
-
-      if (result.event !== 'loaded') {
-        // Ignore any other events.
-        return;
-      }
-
-      session.start(function (sessionError, redirectUrl) {
-        if (sessionError != null) {
-          callback(sessionError);
-          return true;
+    getAgent(function(err, agent) {
+        if (err) {
+            return callback(err);
         }
 
-        if (redirectUrl.indexOf(redirectUri) === -1) {
-          return false;
-        }
+        var keys = generateProofKey();
+        var client = self.client;
+        var redirectUri = self.redirectUri;
+        var requestState = parameters.state || generateState();
 
-        if (!redirectUrl || typeof redirectUrl !== 'string') {
-          callback(new Error('url must be a string'));
-          return true;
-        }
+        parameters.state = requestState;
 
-        var response = parse(redirectUrl, true).query;
-        if (response.error) {
-          callback(new Error(response.error_description || response.error));
-          return true;
-        }
-
-        var responseState = response.state;
-        if (responseState !== requestState) {
-          callback(new Error('Response state does not match expected state'));
-          return true;
-        }
-
-        var code = response.code;
-        var verifier = keys.codeVerifier;
-        agent.close();
-
-        client.oauthToken({
-          code_verifier: verifier,
-          grantType: 'authorization_code',
-          redirectUri: redirectUri,
-          code: code
-        }, function (exchangeError, exchangeResult) {
-          if (exchangeError) {
-            return callback(exchangeError);
-          }
-          return callback(null, exchangeResult);
+        var params = Object.assign({}, parameters, {
+            code_challenge_method: 'S256',
+            responseType: 'code',
+            redirectUri: redirectUri,
+            code_challenge: keys.codeChallenge
         });
 
-        return true;
-      });
+        var url = client.buildAuthorizeUrl(params);
+        url = url.replace('/authorize', '');
+
+        agent.open(url, function(error, result) {
+            if (error != null) {
+                session.clean();
+                return callback(error);
+            }
+
+            if (result.event === 'closed') {
+                var handleClose = function() {
+                    if (session.isClosing) {
+                        session.clean();
+                        return callback(new Error('user canceled'));
+                    }
+                };
+
+                session.closing();
+                if (getOS() === 'ios') {
+                    handleClose();
+                } else {
+                    setTimeout(handleClose, closingDelayMs);
+                    return;
+                }
+            }
+
+            if (result.event !== 'loaded') {
+                // Ignore any other events.
+                return;
+            }
+
+            session.start(function(sessionError, redirectUrl) {
+                if (sessionError != null) {
+                    callback(sessionError);
+                    return true;
+                }
+
+                if (redirectUrl.indexOf(redirectUri) === -1) {
+                    return false;
+                }
+
+                if (!redirectUrl || typeof redirectUrl !== 'string') {
+                    callback(new Error('url must be a string'));
+                    return true;
+                }
+
+                var response = parse(redirectUrl, true).query;
+                if (response.error) {
+                    callback(new Error(response.error_description || response.error));
+                    return true;
+                }
+
+                var responseState = response.state;
+                if (responseState !== requestState) {
+                    callback(new Error('Response state does not match expected state'));
+                    return true;
+                }
+
+                var code = response.code;
+                var verifier = keys.codeVerifier;
+                agent.close();
+
+                client.oauthToken({
+                    code_verifier: verifier,
+                    grantType: 'authorization_code',
+                    redirectUri: redirectUri,
+                    code: code
+                }, function(exchangeError, exchangeResult) {
+                    if (exchangeError) {
+                        return callback(exchangeError);
+                    }
+                    return callback(null, exchangeResult);
+                });
+
+                return true;
+            });
+        });
     });
-  });
 };
 
 /**
@@ -180,15 +181,15 @@ CordovaAuth.prototype.authorize = function (parameters, callback) {
  * @method onRedirectUri
  * @param {String} url with a custom scheme relied to the application
  */
-CordovaAuth.onRedirectUri = function (url) {
-  // If we are running in UIWebView we need to wait
-  if (window.webkit && window.webkit.messageHandlers) {
-    return session.onRedirectUri(url);
-  }
+CordovaAuth.onRedirectUri = function(url) {
+    // If we are running in UIWebView we need to wait
+    if (window.webkit && window.webkit.messageHandlers) {
+        return session.onRedirectUri(url);
+    }
 
-  return setTimeout(function () {
-    session.onRedirectUri(url);
-  }, 4);
+    return setTimeout(function() {
+        session.onRedirectUri(url);
+    }, 4);
 };
 
 CordovaAuth.version = version;
