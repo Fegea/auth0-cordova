@@ -91,6 +91,123 @@ CordovaAuth.prototype.authorize = function(parameters, callback) {
         });
 
         var url = client.buildAuthorizeUrl(params);
+
+        agent.open(url, function(error, result) {
+            if (error != null) {
+                session.clean();
+                return callback(error);
+            }
+
+            if (result.event === 'closed') {
+                var handleClose = function() {
+                    if (session.isClosing) {
+                        session.clean();
+                        return callback(new Error('user canceled'));
+                    }
+                };
+
+                session.closing();
+                if (getOS() === 'ios') {
+                    handleClose();
+                } else {
+                    setTimeout(handleClose, closingDelayMs);
+                    return;
+                }
+            }
+
+            if (result.event !== 'loaded') {
+                // Ignore any other events.
+                return;
+            }
+
+            session.start(function(sessionError, redirectUrl) {
+                if (sessionError != null) {
+                    callback(sessionError);
+                    return true;
+                }
+
+                if (redirectUrl.indexOf(redirectUri) === -1) {
+                    return false;
+                }
+
+                if (!redirectUrl || typeof redirectUrl !== 'string') {
+                    callback(new Error('url must be a string'));
+                    return true;
+                }
+
+                var response = parse(redirectUrl, true).query;
+                if (response.error) {
+                    callback(new Error(response.error_description || response.error));
+                    return true;
+                }
+
+                var responseState = response.state;
+                if (responseState !== requestState) {
+                    callback(new Error('Response state does not match expected state'));
+                    return true;
+                }
+
+                var code = response.code;
+                var verifier = keys.codeVerifier;
+                agent.close();
+
+                client.oauthToken({
+                    code_verifier: verifier,
+                    grantType: 'authorization_code',
+                    redirectUri: redirectUri,
+                    code: code
+                }, function(exchangeError, exchangeResult) {
+                    if (exchangeError) {
+                        return callback(exchangeError);
+                    }
+                    return callback(null, exchangeResult);
+                });
+
+                return true;
+            });
+        });
+    });
+};
+/**
+ * Opens the OS browser and redirects to `{domain}` url in order to initialize a new authN/authZ transaction
+ *
+ * @method open
+ * @param {Object} parameters
+ * @param {String} [parameters.state] value used to mitigate XSRF attacks. {@link https://auth0.com/docs/protocols/oauth2/oauth-state}
+ * @param {String} [parameters.nonce] value used to mitigate replay attacks when using Implicit Grant. {@link https://auth0.com/docs/api-auth/tutorials/nonce}
+ * @param {String} [parameters.scope] scopes to be requested during Auth. e.g. `openid email`
+ * @param {String} [parameters.audience] identifier of the resource server who will consume the access token issued after Auth
+ * @param {authorizeCallback} callback
+ * @see {@link https://auth0.com/docs/api/authentication#authorize-client}
+ * @see {@link https://auth0.com/docs/api/authentication#social}
+ */
+CordovaAuth.prototype.open = function(parameters, callback) {
+    if (!callback || typeof callback !== 'function') {
+        throw new Error('callback not specified or is not a function');
+    }
+
+    var self = this;
+
+    getAgent(function(err, agent) {
+        if (err) {
+            return callback(err);
+        }
+
+        var keys = generateProofKey();
+        var client = self.client;
+        var redirectUri = self.redirectUri;
+        var requestState = parameters.state || generateState();
+
+        parameters.state = requestState;
+
+        var params = Object.assign({}, parameters, {
+            code_challenge_method: 'S256',
+            responseType: 'code',
+            redirectUri: redirectUri,
+            code_challenge: parameters.codeChallenge
+        });
+
+        var url = client.buildAuthorizeUrl(params);
         url = url.replace('/authorize', '');
 
         agent.open(url, function(error, result) {
